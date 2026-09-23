@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 48 22% 97%;
+    --foreground: 150 10% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 150 10% 10%;
+    --primary: 154 45% 25%;
+    --primary-foreground: 48 30% 98%;
+    --secondary: 45 19% 92%;
+    --secondary-foreground: 150 12% 18%;
+    --muted: 45 18% 93%;
+    --muted-foreground: 150 5% 42%;
+    --accent: 40 46% 89%;
+    --accent-foreground: 25 36% 25%;
+    --destructive: 2 65% 49%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 45 14% 84%;
+    --input: 45 14% 78%;
+    --ring: 154 45% 25%;
+    --radius: 0.625rem;
+  }
+
+  * { @apply border-border; }
+  html { scroll-behavior: smooth; }
+  body { @apply min-h-screen bg-background text-foreground antialiased; }
+  button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
+  ::selection { background: hsl(var(--primary) / 0.16); }
+}
+
+@layer components {
+  .focus-ring { @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background; }
+  .page-container { @apply container max-w-[1320px]; }
+  .surface { @apply border border-border bg-card; }
+  .text-balance { text-wrap: balance; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}
