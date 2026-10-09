@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { fallbackParseSearch } from '@/services/ai/searchParser'
-import { fallbackAutofill } from '@/services/ai/autofill'
+import { fallbackAutofill, parseAutofillResponse } from '@/services/ai/autofill'
 
 describe('search parser fallback', () => {
   it('parses keyboard, max price and condition', () => {
@@ -24,5 +24,29 @@ describe('autofill fallback', () => {
     const result = fallbackAutofill({ rawText: '一个闲置物品' })
     expect(result.price).toBeNull()
     expect(result.missingFields).toContain('售价')
+    expect(result.imageInsights).toEqual({ productObjects: [], visibleText: [], colors: [], conditionNotes: [] })
+  })
+})
+
+describe('autofill provider response', () => {
+  it('normalizes unknown nullable text fields returned by a compatible provider', () => {
+    const result = parseAutofillResponse({
+      title: '罗技 K380 绿色无线键盘',
+      category: 'digital',
+      price: null,
+      condition: null,
+      description: '绿色无线键盘',
+      location: null,
+      tags: ['罗技', 'K380'],
+      missingFields: ['售价', '成色', '交易地点'],
+      imageInsights: {
+        productObjects: ['无线键盘'],
+        visibleText: ['LOGITECH K380'],
+        colors: ['绿色'],
+        conditionNotes: [],
+      },
+    })
+
+    expect(result.location).toBe('')
   })
 })

@@ -9,8 +9,10 @@ import { FormField, Input, Select, Textarea } from '@/components/ui/form-control
 import { useToast } from '@/components/ui/toast'
 import { ACCEPTED_IMAGE_TYPES, CATEGORY_OPTIONS, CONDITION_OPTIONS, MAX_IMAGE_BYTES, MAX_IMAGES } from '@/lib/constants'
 import { autofillProduct } from '@/services/ai/autofill'
+import { prepareAutofillImages } from '@/services/ai/images'
 import { safeErrorMessage } from '@/lib/utils'
 import type { Product, ProductInput } from '@/types/domain'
+import type { AutofillImageInsights } from '@/services/ai/types'
 
 const optionalMoney = z.preprocess((value) => value == null || value === '' || Number.isNaN(value) ? null : Number(value), z.number().nonnegative().max(1_000_000).nullable())
 const schema = z.object({
@@ -31,6 +33,7 @@ export function ProductForm({ product, onSubmit }: { product?: Product; onSubmit
   const [rawText, setRawText] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const [aiMissing, setAiMissing] = useState<string[]>([])
+  const [aiInsights, setAiInsights] = useState<AutofillImageInsights | null>(null)
   const [newImages, setNewImages] = useState<NewImage[]>([])
   const [keepImageIds, setKeepImageIds] = useState(product?.images.map((item) => item.id) ?? [])
   const [imageError, setImageError] = useState('')
@@ -61,10 +64,12 @@ export function ProductForm({ product, onSubmit }: { product?: Product; onSubmit
   }
 
   async function runAutofill() {
-    if (rawText.trim().length < 4) { toast({ title: '再多写一点商品信息', description: '描述型号、使用情况、价格或面交地点，填写会更准确。', tone: 'info' }); return }
+    if (rawText.trim().length < 4 && totalImages === 0) { toast({ title: '请提供商品信息', description: '上传至少一张商品图片，或写下型号、成色、价格等信息。', tone: 'info' }); return }
     setAiLoading(true)
     try {
-      const result = await autofillProduct({ rawText, imageNames: newImages.map((item) => item.file.name) })
+      const preparedImages = await prepareAutofillImages(newImages.map((item) => item.file))
+      const existingImages = keptImages.map((item, index) => ({ name: `已上传图片 ${index + 1}`, url: item.url }))
+      const result = await autofillProduct({ rawText, images: [...existingImages, ...preparedImages].slice(0, MAX_IMAGES) })
       if (result.title) setValue('title', result.title, { shouldValidate: true })
       if (result.category) setValue('category', result.category)
       if (result.price != null) setValue('price', result.price, { shouldValidate: true })
@@ -72,7 +77,12 @@ export function ProductForm({ product, onSubmit }: { product?: Product; onSubmit
       if (result.description) setValue('description', result.description, { shouldValidate: true })
       if (result.location) setValue('location', result.location, { shouldValidate: true })
       setAiMissing(result.missingFields)
-      toast({ title: '已填写可确认的信息', description: result.missingFields.length ? '仍有信息需要你补充，发布前请逐项确认。' : '发布前请检查每个字段是否准确。', tone: 'success' })
+      setAiInsights(result.imageInsights)
+      if (result.source === 'fallback') {
+        toast({ title: totalImages ? '图片识别暂时不可用' : '已使用本地规则填写', description: totalImages ? '当前只能从你输入的文字提取信息，请稍后再试图片识别。' : 'AI 服务暂不可用，请检查自动填写结果。', tone: 'info' })
+      } else {
+        toast({ title: '已填写可确认的信息', description: result.missingFields.length ? '仍有信息需要你补充，发布前请逐项确认。' : '发布前请检查每个字段是否准确。', tone: 'success' })
+      }
     } catch (error) { toast({ title: '自动填写暂时不可用', description: safeErrorMessage(error, '你仍可以手动填写表单。'), tone: 'error' }) }
     finally { setAiLoading(false) }
   }
@@ -114,9 +124,10 @@ export function ProductForm({ product, onSubmit }: { product?: Product; onSubmit
       <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
         <section className="surface rounded-lg p-4" aria-labelledby="ai-fill-title">
           <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-primary" /><h2 id="ai-fill-title" className="text-sm font-semibold">辅助填写</h2></div>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">写下你确定的信息。系统只会填入表单，不会替你发布。</p>
-          <Textarea className="mt-3 min-h-32" value={rawText} onChange={(event) => setRawText(event.target.value)} placeholder="例如：K380，用了一年，功能正常，100 元左右，宿舍楼下可面交" aria-label="原始商品描述" />
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">上传图片后可识别商品、文字、颜色和可见外观；补充价格与面交地点会更完整。系统不会替你发布。</p>
+          <Textarea className="mt-3 min-h-32" value={rawText} onChange={(event) => setRawText(event.target.value)} placeholder="可选：K380，用了一年，功能正常，100 元左右，宿舍楼下可面交" aria-label="原始商品描述" />
           <Button type="button" className="mt-3 w-full" variant="secondary" loading={aiLoading} onClick={() => void runAutofill()}>自动填写</Button>
+          {aiInsights && Object.values(aiInsights).some((items) => items.length) ? <div className="mt-3 space-y-1.5 border-t border-border pt-3 text-xs leading-5"><p className="font-medium">图片识别结果</p>{aiInsights.productObjects.length ? <p className="break-words text-muted-foreground">商品：{aiInsights.productObjects.join('、')}</p> : null}{aiInsights.visibleText.length ? <p className="break-words text-muted-foreground">文字：{aiInsights.visibleText.join('、')}</p> : null}{aiInsights.colors.length ? <p className="break-words text-muted-foreground">颜色：{aiInsights.colors.join('、')}</p> : null}{aiInsights.conditionNotes.length ? <p className="break-words text-muted-foreground">外观：{aiInsights.conditionNotes.join('、')}</p> : null}</div> : null}
           {aiMissing.length ? <div className="mt-3"><p className="text-xs text-muted-foreground">仍需补充</p><div className="mt-2 flex flex-wrap gap-1.5">{aiMissing.map((item) => <Badge key={item}>{item}</Badge>)}</div></div> : null}
         </section>
         <div className="surface rounded-lg p-4"><p className="text-sm font-medium">发布前确认</p><ul className="mt-2 space-y-1.5 text-xs leading-5 text-muted-foreground"><li>· 图片与描述属于同一件商品</li><li>· 已如实说明影响使用的问题</li><li>· 面交时当面核对商品状态</li></ul><Button type="submit" className="mt-4 w-full" size="lg" loading={isSubmitting}>{product ? '保存修改' : '确认发布'}</Button></div>

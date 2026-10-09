@@ -1,6 +1,7 @@
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { CATEGORY_LABELS } from '@/lib/constants'
+import { toAuthServiceError, toMarketplaceServiceError } from '@/lib/service-error'
 import { makeId } from '@/lib/utils'
 import type { MarketplaceService } from '@/services/types'
 import type { Conversation, Message, Product, ProductImage, ProductStatus, Profile, TradeRequest, TradeStatus, UserSession } from '@/types/domain'
@@ -63,7 +64,7 @@ function mapConversation(row: RawConversation): Conversation {
 
 async function profileForSession(session: Session): Promise<UserSession> {
   const { data, error } = await client().from('profiles').select('*').eq('id', session.user.id).single()
-  if (error) throw new Error('无法读取个人资料。')
+  if (error) throw toAuthServiceError(error, 'profile')
   return { id: session.user.id, email: session.user.email ?? '', profile: mapProfile(data as RawProfile) }
 }
 
@@ -72,7 +73,8 @@ const tradeSelect = `*, product:products!trade_requests_product_id_fkey(${produc
 const conversationSelect = `*, product:products!conversations_product_id_fkey(${productSelect}), buyer:profiles!conversations_buyer_id_fkey(*), seller:profiles!conversations_seller_id_fkey(*), messages(*)`
 
 async function uploadImages(productId: string, files: File[], startOrder: number) {
-  const { data: authData } = await client().auth.getUser()
+  const { data: authData, error: authError } = await client().auth.getUser()
+  if (authError) throw toAuthServiceError(authError, 'session')
   if (!authData.user) throw new Error('请先登录后再上传图片。')
   const created: RawImage[] = []
   for (let index = 0; index < files.length; index += 1) {
@@ -80,11 +82,11 @@ async function uploadImages(productId: string, files: File[], startOrder: number
     const extension = file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
     const path = `${authData.user.id}/${productId}/${makeId('image')}.${extension}`
     const { error: uploadError } = await client().storage.from('product-images').upload(path, file, { contentType: file.type, upsert: false })
-    if (uploadError) throw new Error(`图片“${file.name}”上传失败，请重试。`)
+    if (uploadError) throw toMarketplaceServiceError(uploadError, `图片“${file.name}”上传失败，请重试。`)
     const { data, error } = await client().from('product_images').insert({ product_id: productId, storage_path: path, sort_order: startOrder + index }).select().single()
     if (error) {
       await client().storage.from('product-images').remove([path])
-      throw new Error('图片记录保存失败，请重试。')
+      throw toMarketplaceServiceError(error, '图片记录保存失败，请重试。')
     }
     created.push(data as RawImage)
   }
@@ -99,28 +101,33 @@ export const supabaseService: MarketplaceService = {
   },
   async getSession() {
     const { data, error } = await client().auth.getSession()
-    if (error) throw new Error('登录状态读取失败，请刷新重试。')
+    if (error) throw toAuthServiceError(error, 'session')
     return data.session ? profileForSession(data.session) : null
   },
   async signIn(email, password) {
     const { data, error } = await client().auth.signInWithPassword({ email, password })
-    if (error || !data.session) throw new Error('邮箱或密码不正确。')
+    if (error) throw toAuthServiceError(error, 'sign-in')
+    if (!data.session) throw toAuthServiceError(new Error('Missing session'), 'sign-in')
     return profileForSession(data.session)
   },
   async signUp(email, password, username) {
     const { data, error } = await client().auth.signUp({ email, password, options: { data: { username } } })
-    if (error) throw new Error(error.message.includes('already') ? '这个邮箱已经注册。' : '注册失败，请检查信息后重试。')
+    if (error) {
+      if (/already|registered/i.test(error.message)) throw new Error('这个邮箱已经注册。')
+      throw toAuthServiceError(error, 'sign-up')
+    }
     return data.session ? profileForSession(data.session) : null
   },
   async signOut() {
     const { error } = await client().auth.signOut()
-    if (error) throw new Error('退出失败，请重试。')
+    if (error) throw toAuthServiceError(error, 'session')
   },
   async updateProfile(input) {
-    const { data: authData } = await client().auth.getUser()
+    const { data: authData, error: authError } = await client().auth.getUser()
+    if (authError) throw toAuthServiceError(authError, 'session')
     if (!authData.user) throw new Error('请先登录。')
     const { data, error } = await client().from('profiles').update({ username: input.username, bio: input.bio }).eq('id', authData.user.id).select().single()
-    if (error) throw new Error('个人资料保存失败，请重试。')
+    if (error) throw toMarketplaceServiceError(error, '个人资料保存失败，请重试。')
     return mapProfile(data as RawProfile)
   },
   async listProducts(filters = {}) {
@@ -140,19 +147,20 @@ export const supabaseService: MarketplaceService = {
     if (filters.sellerId) query = query.eq('seller_id', filters.sellerId)
     query = filters.sort === 'price_asc' ? query.order('price', { ascending: true }) : filters.sort === 'price_desc' ? query.order('price', { ascending: false }) : query.order('created_at', { ascending: false })
     const { data, error } = await query.limit(100)
-    if (error) throw new Error('商品加载失败，请检查网络后重试。')
+    if (error) throw toMarketplaceServiceError(error, '商品加载失败，请稍后重试。')
     return (data as unknown as RawProduct[]).map(mapProduct)
   },
   async getProduct(id) {
     const { data, error } = await client().from('products').select(productSelect).eq('id', id).maybeSingle()
-    if (error) throw new Error('商品详情加载失败，请重试。')
+    if (error) throw toMarketplaceServiceError(error, '商品详情加载失败，请重试。')
     return data ? mapProduct(data as unknown as RawProduct) : null
   },
   async createProduct(input, files) {
-    const { data: authData } = await client().auth.getUser()
+    const { data: authData, error: authError } = await client().auth.getUser()
+    if (authError) throw toAuthServiceError(authError, 'session')
     if (!authData.user) throw new Error('请先登录后再发布。')
     const { data, error } = await client().from('products').insert({ seller_id: authData.user.id, title: input.title, description: input.description, category: input.category, price: input.price, original_price: input.originalPrice, condition: input.condition, location: input.location, status: input.status ?? 'active' }).select().single()
-    if (error) throw new Error('商品发布失败，请检查信息后重试。')
+    if (error) throw toMarketplaceServiceError(error, '商品发布失败，请检查信息后重试。')
     try { await uploadImages(data.id as string, files, 0) } catch (uploadError) {
       await client().from('products').delete().eq('id', data.id)
       throw uploadError
@@ -166,10 +174,10 @@ export const supabaseService: MarketplaceService = {
     if (!existing) throw new Error('商品不存在。')
     const remove = existing.images.filter((item) => !keepImageIds.includes(item.id))
     const { error } = await client().from('products').update({ title: input.title, description: input.description, category: input.category, price: input.price, original_price: input.originalPrice, condition: input.condition, location: input.location }).eq('id', id)
-    if (error) throw new Error('商品保存失败，请重试。')
+    if (error) throw toMarketplaceServiceError(error, '商品保存失败，请重试。')
     if (remove.length) {
       const { error: imageError } = await client().from('product_images').delete().in('id', remove.map((item) => item.id))
-      if (imageError) throw new Error('部分图片删除失败，请重试。')
+      if (imageError) throw toMarketplaceServiceError(imageError, '部分图片删除失败，请重试。')
       await client().storage.from('product-images').remove(remove.map((item) => item.storagePath))
     }
     const keptImages = existing.images.filter((item) => keepImageIds.includes(item.id)).sort((a, b) => keepImageIds.indexOf(a.id) - keepImageIds.indexOf(b.id))
@@ -183,69 +191,77 @@ export const supabaseService: MarketplaceService = {
   },
   async setProductStatus(id, status) {
     const { data, error } = await client().from('products').update({ status }).eq('id', id).select(productSelect).single()
-    if (error) throw new Error('商品状态更新失败。')
+    if (error) throw toMarketplaceServiceError(error, '商品状态更新失败。')
     return mapProduct(data as unknown as RawProduct)
   },
   async deleteProduct(id) {
     const product = await this.getProduct(id)
     const { error } = await client().from('products').delete().eq('id', id)
-    if (error) throw new Error('商品删除失败，请重试。')
+    if (error) throw toMarketplaceServiceError(error, '商品删除失败，请重试。')
     if (product?.images.length) await client().storage.from('product-images').remove(product.images.map((item) => item.storagePath))
   },
   async favoriteIds() {
-    const { data: authData } = await client().auth.getUser()
+    const { data: authData, error: authError } = await client().auth.getUser()
+    if (authError) throw toAuthServiceError(authError, 'session')
     if (!authData.user) return []
     const { data, error } = await client().from('favorites').select('product_id').eq('user_id', authData.user.id)
-    if (error) throw new Error('收藏状态加载失败。')
+    if (error) throw toMarketplaceServiceError(error, '收藏状态加载失败。')
     return (data as Array<{ product_id: string }>).map((item) => item.product_id)
   },
   async toggleFavorite(productId) {
-    const { data: authData } = await client().auth.getUser()
+    const { data: authData, error: authError } = await client().auth.getUser()
+    if (authError) throw toAuthServiceError(authError, 'session')
     if (!authData.user) throw new Error('请先登录后再收藏。')
-    const { data } = await client().from('favorites').select('id').eq('user_id', authData.user.id).eq('product_id', productId).maybeSingle()
+    const { data, error: lookupError } = await client().from('favorites').select('id').eq('user_id', authData.user.id).eq('product_id', productId).maybeSingle()
+    if (lookupError) throw toMarketplaceServiceError(lookupError, '收藏状态读取失败，请重试。')
     if (data) {
       const { error } = await client().from('favorites').delete().eq('id', data.id)
-      if (error) throw new Error('取消收藏失败。')
+      if (error) throw toMarketplaceServiceError(error, '取消收藏失败。')
       return false
     }
     const { error } = await client().from('favorites').insert({ user_id: authData.user.id, product_id: productId })
-    if (error) throw new Error('收藏失败，请重试。')
+    if (error) throw toMarketplaceServiceError(error, '收藏失败，请重试。')
     return true
   },
   async listFavorites() {
-    const { data: authData } = await client().auth.getUser()
+    const { data: authData, error: authError } = await client().auth.getUser()
+    if (authError) throw toAuthServiceError(authError, 'session')
     if (!authData.user) throw new Error('请先登录。')
     const { data, error } = await client().from('favorites').select(`product:products!favorites_product_id_fkey(${productSelect})`).eq('user_id', authData.user.id).order('created_at', { ascending: false })
-    if (error) throw new Error('收藏列表加载失败。')
+    if (error) throw toMarketplaceServiceError(error, '收藏列表加载失败。')
     return (data as unknown as Array<{ product: RawProduct }>).map((item) => mapProduct(item.product))
   },
   async listTrades() {
     const { data, error } = await client().from('trade_requests').select(tradeSelect).order('updated_at', { ascending: false })
-    if (error) throw new Error('交易列表加载失败。')
+    if (error) throw toMarketplaceServiceError(error, '交易列表加载失败。')
     return (data as unknown as RawTrade[]).map(mapTrade)
   },
   async createTrade(productId) {
-    const { data: authData } = await client().auth.getUser()
+    const { data: authData, error: authError } = await client().auth.getUser()
+    if (authError) throw toAuthServiceError(authError, 'session')
     if (!authData.user) throw new Error('请先登录。')
     const product = await this.getProduct(productId)
     if (!product) throw new Error('商品不存在。')
     const { data, error } = await client().from('trade_requests').insert({ product_id: productId, buyer_id: authData.user.id, seller_id: product.sellerId }).select(tradeSelect).single()
-    if (error) throw new Error(error.code === '23505' ? '你已经发起过交易请求。' : '交易请求发送失败，请重试。')
+    if (error) {
+      if (error.code === '23505') throw new Error('你已经发起过交易请求。')
+      throw toMarketplaceServiceError(error, '交易请求发送失败，请重试。')
+    }
     return mapTrade(data as unknown as RawTrade)
   },
   async updateTrade(id, status) {
     const { data, error } = await client().rpc('transition_trade_request', { request_id: id, next_status: status }).select(tradeSelect).single()
-    if (error) throw new Error('当前状态不允许这个操作，或请求已被处理。')
+    if (error) throw toMarketplaceServiceError(error, '当前状态不允许这个操作，或请求已被处理。')
     return mapTrade(data as unknown as RawTrade)
   },
   async listConversations() {
     const { data, error } = await client().from('conversations').select(conversationSelect).order('updated_at', { ascending: false })
-    if (error) throw new Error('消息列表加载失败。')
+    if (error) throw toMarketplaceServiceError(error, '消息列表加载失败。')
     return (data as unknown as RawConversation[]).map(mapConversation)
   },
   async getOrCreateConversation(productId, tradeRequestId) {
     const { data, error } = await client().rpc('get_or_create_conversation', { target_product_id: productId, target_trade_request_id: tradeRequestId ?? null }).single()
-    if (error) throw new Error('会话创建失败，请重试。')
+    if (error) throw toMarketplaceServiceError(error, '会话创建失败，请重试。')
     const conversationId = (data as { id: string }).id
     const conversation = await this.getConversation(conversationId)
     if (!conversation) throw new Error('会话读取失败。')
@@ -253,21 +269,23 @@ export const supabaseService: MarketplaceService = {
   },
   async getConversation(id) {
     const { data, error } = await client().from('conversations').select(conversationSelect).eq('id', id).maybeSingle()
-    if (error) throw new Error('会话加载失败。')
+    if (error) throw toMarketplaceServiceError(error, '会话加载失败。')
     return data ? mapConversation(data as unknown as RawConversation) : null
   },
   async listMessages(conversationId) {
     const { data, error } = await client().from('messages').select('*').eq('conversation_id', conversationId).order('created_at', { ascending: true })
-    if (error) throw new Error('消息加载失败。')
-    const { data: authData } = await client().auth.getUser()
+    if (error) throw toMarketplaceServiceError(error, '消息加载失败。')
+    const { data: authData, error: authError } = await client().auth.getUser()
+    if (authError) throw toAuthServiceError(authError, 'session')
     if (authData.user) await client().from('messages').update({ read_at: new Date().toISOString() }).eq('conversation_id', conversationId).neq('sender_id', authData.user.id).is('read_at', null)
     return (data as RawMessage[]).map(mapMessage)
   },
   async sendMessage(conversationId, content) {
-    const { data: authData } = await client().auth.getUser()
+    const { data: authData, error: authError } = await client().auth.getUser()
+    if (authError) throw toAuthServiceError(authError, 'session')
     if (!authData.user) throw new Error('请先登录。')
     const { data, error } = await client().from('messages').insert({ conversation_id: conversationId, sender_id: authData.user.id, content: content.trim() }).select().single()
-    if (error) throw new Error('消息发送失败，请重试。')
+    if (error) throw toMarketplaceServiceError(error, '消息发送失败，请重试。')
     return mapMessage(data as RawMessage)
   },
   subscribeMessages(conversationId, callback) {

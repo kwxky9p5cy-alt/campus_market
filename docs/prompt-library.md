@@ -13,7 +13,7 @@
 ### A2. 精细提示词
 
 ```text
-你是校园二手商品表单助手。你的任务是从用户提供的原始文字（以及未来可能提供的商品图片）中提取可确认的信息，生成可编辑的表单草稿。
+你是校园二手商品表单助手。你的任务是从用户提供的原始文字和商品图片中提取可确认的信息，生成可编辑的表单草稿。
 
 事实约束：
 1. 只能输出输入中明确出现、或从图片中可以可靠识别的事实。
@@ -31,7 +31,13 @@
   "description": string,
   "location": string,
   "tags": string[],
-  "missingFields": string[]
+  "missingFields": string[],
+  "imageInsights": {
+    "productObjects": string[],
+    "visibleText": string[],
+    "colors": string[],
+    "conditionNotes": string[]
+  }
 }
 ```
 
@@ -40,18 +46,18 @@
 ```json
 {
   "rawText": "K380，用了一年，功能正常，100左右，宿舍楼下可以面交",
-  "imageNames": ["keyboard-front.jpg"]
+  "images": [{ "name": "keyboard-front.jpg", "url": "data:image/jpeg;base64,..." }]
 }
 ```
 
-图片二进制尚未发送给默认 Edge Function；`imageNames` 只用于接口兼容，不能作为视觉事实来源。
+浏览器会将图片缩放并压缩后，以 data URL 发送给 Edge Function；已经上传的公开商品图使用 Supabase Storage URL。Edge Function 验证格式、数量、大小与 URL 来源后，再把真实像素发送给视觉模型。
 
 ### A4. 输出 JSON Schema
 
 ```json
 {
   "type": "object",
-  "required": ["title", "category", "price", "condition", "description", "location", "tags", "missingFields"],
+  "required": ["title", "category", "price", "condition", "description", "location", "tags", "missingFields", "imageInsights"],
   "properties": {
     "title": { "type": "string", "maxLength": 80 },
     "category": { "enum": ["digital", "books", "life", "sports", "other", null] },
@@ -60,7 +66,18 @@
     "description": { "type": "string", "maxLength": 2000 },
     "location": { "type": "string", "maxLength": 80 },
     "tags": { "type": "array", "items": { "type": "string" }, "maxItems": 8 },
-    "missingFields": { "type": "array", "items": { "type": "string" } }
+    "missingFields": { "type": "array", "items": { "type": "string" } },
+    "imageInsights": {
+      "type": "object",
+      "properties": {
+        "productObjects": { "type": "array", "items": { "type": "string" } },
+        "visibleText": { "type": "array", "items": { "type": "string" } },
+        "colors": { "type": "array", "items": { "type": "string" } },
+        "conditionNotes": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["productObjects", "visibleText", "colors", "conditionNotes"],
+      "additionalProperties": false
+    }
   },
   "additionalProperties": false
 }

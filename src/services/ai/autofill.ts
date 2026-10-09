@@ -4,15 +4,25 @@ import type { ProductCategory, ProductCondition } from '@/types/domain'
 import type { AutofillInput, AutofillResult } from '@/services/ai/types'
 
 const schema = z.object({
-  title: z.string().max(80),
+  title: z.string().max(80).nullish().transform((value) => value ?? ''),
   category: z.enum(['digital', 'books', 'life', 'sports', 'other']).nullable(),
   price: z.number().nonnegative().nullable(),
   condition: z.enum(['new', 'like_new', 'good', 'fair']).nullable(),
-  description: z.string().max(2000),
-  location: z.string().max(80),
+  description: z.string().max(2000).nullish().transform((value) => value ?? ''),
+  location: z.string().max(80).nullish().transform((value) => value ?? ''),
   tags: z.array(z.string()).max(8),
   missingFields: z.array(z.string()),
+  imageInsights: z.object({
+    productObjects: z.array(z.string().max(80)).max(8),
+    visibleText: z.array(z.string().max(120)).max(12),
+    colors: z.array(z.string().max(40)).max(8),
+    conditionNotes: z.array(z.string().max(120)).max(8),
+  }),
 })
+
+export function parseAutofillResponse(data: unknown) {
+  return schema.parse(data)
+}
 
 const categoryRules: Array<[ProductCategory, RegExp]> = [
   ['digital', /键盘|鼠标|耳机|电脑|显示器|相机|平板|手机|路由器|充电|音箱|k\d+/i],
@@ -68,6 +78,7 @@ export function fallbackAutofill({ rawText }: AutofillInput): AutofillResult {
     location,
     tags: [...new Set(tags)],
     missingFields,
+    imageInsights: { productObjects: [], visibleText: [], colors: [], conditionNotes: [] },
     source: 'fallback',
   }
 }
@@ -76,7 +87,7 @@ export async function autofillProduct(input: AutofillInput): Promise<AutofillRes
   if (supabase) {
     try {
       const { data, error } = await supabase.functions.invoke('ai-assistant', { body: { task: 'autofill', input } })
-      if (!error) return { ...schema.parse(data), source: 'provider' }
+      if (!error) return { ...parseAutofillResponse(data), source: 'provider' }
     } catch { /* Keep the editable rule-based form available. */ }
   }
   return fallbackAutofill(input)

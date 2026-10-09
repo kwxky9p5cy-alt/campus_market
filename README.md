@@ -51,16 +51,18 @@ demo1234
 ```bash
 VITE_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 VITE_SUPABASE_ANON_KEY=YOUR_ANON_KEY
+VITE_REQUEST_TIMEOUT_MS=12000
 ```
 
 `anon` key 可以放在浏览器，但必须保留本项目 RLS。不要将 `service_role` 或 AI Key 加上 `VITE_` 前缀。
 
+`VITE_REQUEST_TIMEOUT_MS` 可选，范围为 1000–60000 毫秒。真实服务不可达时，应用会显示可恢复的网络错误，不会自动切换到演示数据，以免真实数据与浏览器本地数据混淆。
+
 Edge Function 的服务端 secrets：
 
 ```bash
-supabase secrets set AI_PROVIDER_URL=https://YOUR_PROVIDER/v1/chat/completions
-supabase secrets set AI_PROVIDER_API_KEY=YOUR_SECRET
-supabase secrets set AI_PROVIDER_MODEL=YOUR_MODEL
+supabase secrets set DEEPSEEK_API_KEY=YOUR_SECRET
+supabase secrets set DEEPSEEK_MODEL=deepseek-flash
 ```
 
 ## Supabase 创建与配置
@@ -104,6 +106,8 @@ supabase secrets set AI_PROVIDER_MODEL=YOUR_MODEL
 supabase functions deploy ai-assistant
 ```
 
+自动填写会先把浏览器中的商品图压缩到适合视觉识别的大小，再由 Edge Function 发送给 DeepSeek Responses API 的 `deepseek-flash` 视觉模型。模型提取主要商品、可见文字、颜色与外观状态，并以 JSON Schema 返回可编辑草稿。图片不会写入前端环境变量，DeepSeek Key 只保存在 Supabase secrets。
+
 若函数、模型或 Key 不可用，页面自动使用独立规则解析器：
 
 - 智能检索：价格上下限/区间、常见分类、商品关键词、常见成色。
@@ -119,6 +123,13 @@ npm run lint
 npm run test
 npm run build
 ```
+
+## 连接与登录排障
+
+- 首页商品与登录同时失败时，先确认浏览器能访问 `VITE_SUPABASE_URL` 对应的 `*.supabase.co` 域名。
+- 使用 TUN、代理或 fake-IP DNS 时，需要确保 `supabase.com` 与 `*.supabase.co` 被正确转发；TLS 握手失败不是邮箱或密码错误。
+- 登录成功但个人资料无法读取时，确认远端已经应用全部 migration；最新修复 migration 会补建历史账号缺失的 `profiles`。
+- 本地临时查看 UI 可清空两项 Supabase 环境变量进入演示模式，但不要把演示数据当成真实数据。
 
 ## 部署
 
@@ -140,7 +151,7 @@ Build command 使用 `npm run build`，Publish directory 使用 `dist`；`public
 - 用户评分/信用系统、复杂管理员后台
 - AI 商品推荐与个性化推荐
 - 聊天图片、语音、视频或文件
-- 默认 Edge Function 尚未发送图片二进制给多模态模型；当前自动填写基于文字
+- AI 只生成待确认草稿，不替用户验证商品真伪、内部功能或执行发布
 
 ## 安全提示
 

@@ -13,6 +13,7 @@ type AuthMode = 'login' | 'signup'
 interface AuthContextValue {
   session: UserSession | null
   loading: boolean
+  authError: string
   openAuth: (mode?: AuthMode) => void
   signOut: () => Promise<void>
   refreshSession: () => Promise<void>
@@ -26,6 +27,7 @@ const signupSchema = loginSchema.extend({ username: z.string().trim().min(2, '�
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<UserSession | null>(null)
   const [loading, setLoading] = useState(true)
+  const [authError, setAuthError] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [mode, setMode] = useState<AuthMode>('login')
   const [submitting, setSubmitting] = useState(false)
@@ -35,7 +37,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast()
 
   const refreshSession = useCallback(async () => {
-    try { setSession(await marketplace.getSession()) } catch { setSession(null) }
+    setLoading(true)
+    try {
+      setSession(await marketplace.getSession())
+      setAuthError('')
+    } catch (error) {
+      setSession(null)
+      setAuthError(safeErrorMessage(error, '暂时无法确认登录状态，请重试。'))
+    }
     finally { setLoading(false) }
   }, [])
 
@@ -59,9 +68,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [openAuth, session])
 
   const signOut = useCallback(async () => {
-    await marketplace.signOut()
-    setSession(null)
-    toast({ title: '已安全退出', tone: 'success' })
+    try {
+      await marketplace.signOut()
+      setSession(null)
+      setAuthError('')
+      toast({ title: '已安全退出', tone: 'success' })
+    } catch (error) {
+      toast({ title: '退出失败', description: safeErrorMessage(error), tone: 'error' })
+    }
   }, [toast])
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -86,6 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         toast({ title: '注册成功', description: '请前往邮箱完成验证，然后返回登录。', tone: 'success' })
       } else {
         setSession(next)
+        setAuthError('')
         setDialogOpen(false)
         toast({ title: mode === 'login' ? '欢迎回来' : '账号创建成功', tone: 'success' })
         window.setTimeout(() => { afterAuth?.(); setAfterAuth(null) }, 0)
@@ -97,13 +112,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const value = useMemo(() => ({ session, loading, openAuth, signOut, refreshSession, requireAuth }), [session, loading, openAuth, signOut, refreshSession, requireAuth])
+  const value = useMemo(() => ({ session, loading, authError, openAuth, signOut, refreshSession, requireAuth }), [session, loading, authError, openAuth, signOut, refreshSession, requireAuth])
 
   return (
     <AuthContext.Provider value={value}>
       {children}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen} title={mode === 'login' ? '登录校园集市' : '创建账号'} description={mode === 'login' ? '登录后可收藏、发布和联系卖家。' : '无需学校认证，使用常用邮箱即可。'}>
         <form className="grid gap-4" onSubmit={handleSubmit} noValidate>
+          {authError && !formError ? (
+            <div className="rounded-md border border-destructive/25 bg-destructive/5 px-3 py-2 text-sm" role="status">
+              <p className="text-destructive">{authError}</p>
+              <button type="button" className="focus-ring mt-2 rounded text-xs font-medium text-foreground underline underline-offset-4" onClick={() => void refreshSession()}>重新连接</button>
+            </div>
+          ) : null}
           {mode === 'signup' ? (
             <FormField label="昵称" htmlFor="auth-username" required error={fieldErrors.username}>
               <Input id="auth-username" name="username" autoComplete="nickname" placeholder="例如：小林" aria-invalid={Boolean(fieldErrors.username)} />
@@ -133,15 +154,22 @@ export function useAuth() {
 }
 
 export function ProtectedRoute({ children }: { children: ReactNode }) {
-  const { session, loading, openAuth } = useAuth()
+  const { session, loading, authError, openAuth, refreshSession } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
 
   useEffect(() => {
-    if (!loading && !session) openAuth('login')
-  }, [loading, session, openAuth])
+    if (!loading && !session && !authError) openAuth('login')
+  }, [loading, session, authError, openAuth])
 
   if (loading) return <div className="page-container py-12 text-sm text-muted-foreground">正在确认登录状态…</div>
+  if (authError) return (
+    <div className="page-container flex min-h-[60vh] flex-col items-center justify-center px-6 text-center">
+      <h1 className="text-xl font-semibold">暂时无法确认登录状态</h1>
+      <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">{authError}</p>
+      <div className="mt-5 flex gap-2"><Button onClick={() => void refreshSession()}>重新连接</Button><Button variant="outline" onClick={() => navigate('/')}>返回首页</Button></div>
+    </div>
+  )
   if (!session) return (
     <div className="page-container flex min-h-[60vh] flex-col items-center justify-center text-center">
       <h1 className="text-xl font-semibold">登录后继续</h1>

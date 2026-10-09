@@ -10,9 +10,21 @@ export interface SearchParseResult {
   source: 'provider' | 'fallback'
 }
 
+export interface AutofillImage {
+  name: string
+  url: string
+}
+
 export interface AutofillInput {
   rawText: string
-  imageNames?: string[]
+  images?: AutofillImage[]
+}
+
+export interface AutofillImageInsights {
+  productObjects: string[]
+  visibleText: string[]
+  colors: string[]
+  conditionNotes: string[]
 }
 
 export interface AutofillResult {
@@ -24,5 +36,6 @@ export interface AutofillResult {
   location: string
   tags: string[]
   missingFields: string[]
+  imageInsights: AutofillImageInsights
   source: 'provider' | 'fallback'
 }
