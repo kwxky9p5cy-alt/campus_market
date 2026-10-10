@@ -10,6 +10,7 @@ import { useToast } from '@/components/ui/toast'
 import { ACCEPTED_IMAGE_TYPES, CATEGORY_OPTIONS, CONDITION_OPTIONS, MAX_IMAGE_BYTES, MAX_IMAGES } from '@/lib/constants'
 import { autofillProduct } from '@/services/ai/autofill'
 import { prepareAutofillImages } from '@/services/ai/images'
+import { splitCampusAddress, type CampusName } from '@/services/campus-locations'
 import { safeErrorMessage } from '@/lib/utils'
 import type { Product, ProductInput } from '@/types/domain'
 import type { AutofillImageInsights, AutofillResearch } from '@/services/ai/types'
@@ -30,6 +31,8 @@ type Values = z.infer<typeof schema>
 interface NewImage { file: File; url: string }
 
 export function ProductForm({ product, onSubmit }: { product?: Product; onSubmit: (input: ProductInput, files: File[], keepImageIds: string[]) => Promise<void> }) {
+  const initialLocation = splitCampusAddress(product?.location ?? '')
+  const [campus, setCampus] = useState<CampusName>(initialLocation.campus)
   const [rawText, setRawText] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const [aiMissing, setAiMissing] = useState<string[]>([])
@@ -43,7 +46,7 @@ export function ProductForm({ product, onSubmit }: { product?: Product; onSubmit
   const { register, handleSubmit, setValue, formState: { errors, isSubmitting } } = useForm<Values>({
     resolver: zodResolver(schema),
     defaultValues: {
-      title: product?.title ?? '', category: product?.category ?? 'digital', originalPrice: product?.originalPrice ?? null, price: product?.price ?? 0, condition: product?.condition ?? 'good', description: product?.description ?? '', location: product?.location ?? '',
+      title: product?.title ?? '', category: product?.category ?? 'digital', originalPrice: product?.originalPrice ?? null, price: product?.price ?? 0, condition: product?.condition ?? 'good', description: product?.description ?? '', location: initialLocation.location,
     },
   })
 
@@ -92,7 +95,7 @@ export function ProductForm({ product, onSubmit }: { product?: Product; onSubmit
   async function submit(values: Values) {
     if (totalImages === 0) { setImageError('请至少上传一张真实商品图片。'); inputRef.current?.focus(); return }
     setImageError('')
-    await onSubmit({ ...values, originalPrice: values.originalPrice ?? null }, newImages.map((item) => item.file), keepImageIds)
+    await onSubmit({ ...values, location: `${campus} · ${values.location}`, originalPrice: values.originalPrice ?? null }, newImages.map((item) => item.file), keepImageIds)
   }
 
   return (
@@ -118,7 +121,8 @@ export function ProductForm({ product, onSubmit }: { product?: Product; onSubmit
             <FormField label="售价" htmlFor="product-price" required error={errors.price?.message}><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">¥</span><Input id="product-price" className="pl-7" type="number" min="0" step="0.01" {...register('price', { valueAsNumber: true })} aria-invalid={Boolean(errors.price)} /></div></FormField>
             <FormField label="原价（可选）" htmlFor="product-original-price" error={errors.originalPrice?.message}><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">¥</span><Input id="product-original-price" className="pl-7" type="number" min="0" step="0.01" {...register('originalPrice')} aria-invalid={Boolean(errors.originalPrice)} /></div></FormField>
             <div className="sm:col-span-2"><FormField label="商品描述" htmlFor="product-description" required error={errors.description?.message} hint="如实说明功能、外观、缺陷和包含物品。"><Textarea id="product-description" rows={6} {...register('description')} aria-invalid={Boolean(errors.description)} /></FormField></div>
-            <div className="sm:col-span-2"><FormField label="面交地点" htmlFor="product-location" required error={errors.location?.message} hint="请使用公共、容易找到的地点。"><Input id="product-location" {...register('location')} placeholder="例如：图书馆附近" aria-invalid={Boolean(errors.location)} /></FormField></div>
+            <FormField label="校区" htmlFor="product-campus" required><Select id="product-campus" value={campus} onChange={(event) => setCampus(event.target.value as CampusName)}><option value="清水河校区">清水河校区</option><option value="沙河校区">沙河校区</option></Select></FormField>
+            <FormField label="面交地点" htmlFor="product-location" required error={errors.location?.message} hint="请填写地图可识别的建筑或公共地点。"><Input id="product-location" {...register('location')} placeholder="例如：学知苑一组团、图书馆" aria-invalid={Boolean(errors.location)} /></FormField>
           </div>
         </section>
       </div>

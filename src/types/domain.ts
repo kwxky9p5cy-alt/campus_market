@@ -37,6 +37,9 @@ export interface Product {
   updatedAt: string
   images: ProductImage[]
   seller: Profile
+  distanceLabel?: string
+  differentCampus?: boolean
+  distanceUnavailable?: boolean
 }
 
 export interface ProductInput {
@@ -52,6 +55,7 @@ export interface ProductInput {
 
 export interface ProductFilters {
   query?: string
+  location?: string
   category?: ProductCategory | 'all'
   minPrice?: number | null
   maxPrice?: number | null

@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { CATEGORY_LABELS } from '@/lib/constants'
 import { toAuthServiceError, toMarketplaceServiceError } from '@/lib/service-error'
 import { makeId } from '@/lib/utils'
+import { resolveCampusLocation } from '@/services/campus-locations'
 import type { MarketplaceService } from '@/services/types'
 import type { Conversation, Message, Product, ProductImage, ProductStatus, Profile, TradeRequest, TradeStatus, UserSession } from '@/types/domain'
 
@@ -138,6 +139,16 @@ export const supabaseService: MarketplaceService = {
       const value = matchedCategory ? rawValue.replace(CATEGORY_LABELS[matchedCategory], '').trim() : rawValue
       if (matchedCategory) query = query.eq('category', matchedCategory)
       if (value) query = query.or(`title.ilike.%${value}%,description.ilike.%${value}%`)
+    }
+    if (filters.location?.trim()) {
+      const campusLocation = resolveCampusLocation(filters.location)
+      if (campusLocation) {
+        const locationFilters = campusLocation.aliases.map((alias) => `location.ilike.%${alias}%`).join(',')
+        query = query.or(locationFilters)
+      } else {
+        const location = filters.location.trim().replace(/[,%()_*]/g, ' ')
+        if (location) query = query.ilike('location', `%${location}%`)
+      }
     }
     if (filters.category && filters.category !== 'all') query = query.eq('category', filters.category)
     if (filters.condition && filters.condition !== 'all') query = query.eq('condition', filters.condition)

@@ -54,6 +54,16 @@ VITE_SUPABASE_ANON_KEY=YOUR_ANON_KEY
 VITE_REQUEST_TIMEOUT_MS=30000
 ```
 
+校园地点识别和距离估算使用高德地图 Web JS API。请在高德开放平台申请 **Web 端（JS API）Key** 和安全密钥，并加入 `.env.local`：
+
+```bash
+VITE_AMAP_JS_KEY=YOUR_AMAP_JS_KEY
+VITE_AMAP_SECURITY_CODE=YOUR_AMAP_SECURITY_CODE
+```
+
+在高德控制台限制 Key 可用域名。地点解析后只计算同一校区内的步行路线距离；跨清水河/沙河校区只标注校区，不展示两校区间距离。
+修改 `.env.local` 后重启 `npm run dev` 才会读取新配置。这里使用的是 **Web 端（JS API）Key + 安全密钥**，不是 Web 服务端 Key。
+
 `anon` key 可以放在浏览器，但必须保留本项目 RLS。不要将 `service_role` 或 AI Key 加上 `VITE_` 前缀。
 
 `VITE_REQUEST_TIMEOUT_MS` 可选，范围为 1000–60000 毫秒。真实服务不可达时，应用会显示可恢复的网络错误，不会自动切换到演示数据，以免真实数据与浏览器本地数据混淆。

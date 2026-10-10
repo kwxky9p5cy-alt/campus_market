@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { useFavorites } from '@/features/favorites/FavoritesProvider'
 import { CONDITION_LABELS, PRODUCT_STATUS_LABELS } from '@/lib/constants'
 import { cn, formatPrice, formatRelativeTime } from '@/lib/utils'
+import { formatCampusLocation } from '@/services/campus-locations'
 import type { Product } from '@/types/domain'
 
 export function ProductCard({ product }: { product: Product }) {
@@ -42,9 +43,10 @@ export function ProductCard({ product }: { product: Product }) {
         </div>
         <div className="mt-1.5 flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
           <span>{CONDITION_LABELS[product.condition]}</span><span aria-hidden="true">·</span>
-          <span className="flex min-w-0 items-center gap-1 truncate"><MapPin className="h-3 w-3 shrink-0" />{product.location}</span><span aria-hidden="true">·</span>
+          <span className="flex min-w-0 items-center gap-1 truncate"><MapPin className="h-3 w-3 shrink-0" />{formatCampusLocation(product.location)}</span><span aria-hidden="true">·</span>
           <span className="shrink-0">{formatRelativeTime(product.createdAt)}</span>
         </div>
+        {product.distanceLabel || product.differentCampus || product.distanceUnavailable ? <div className="mt-1 text-xs text-muted-foreground">{product.distanceLabel ? `距起点 ${product.distanceLabel}` : product.differentCampus ? '与起点不在同一校区' : '无法识别交易地点距离'}</div> : null}
       </Link>
     </article>
   )

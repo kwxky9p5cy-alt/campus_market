@@ -1,5 +1,6 @@
 import { demoConversations, demoMessages, demoProducts, demoProfiles, demoTradeRequests } from '@/services/demo-data'
 import { fileToDataUrl, makeId } from '@/lib/utils'
+import { resolveCampusLocation } from '@/services/campus-locations'
 import type { Conversation, Message, Product, ProductFilters, ProductInput, ProductStatus, Profile, TradeRequest, TradeStatus, UserSession } from '@/types/domain'
 
 interface DemoUser { id: string; email: string; password: string }
@@ -70,7 +71,14 @@ function matches(product: Product, filters: ProductFilters) {
   const query = filters.query?.trim().toLowerCase()
   const categoryLabel = { digital: '数码', books: '教材 书籍', life: '生活', sports: '运动', other: '其他' }[product.category]
   const haystack = `${product.title} ${product.description} ${product.category} ${categoryLabel}`.toLowerCase()
+  const locationFilter = filters.location?.trim()
+  const requestedCampusLocation = resolveCampusLocation(locationFilter)
+  const productCampusLocation = resolveCampusLocation(product.location)
+  const matchesLocation = !locationFilter || (requestedCampusLocation
+    ? productCampusLocation?.canonical === requestedCampusLocation.canonical
+    : product.location.toLowerCase().includes(locationFilter.toLowerCase()))
   return (!query || query.split(/\s+/).every((word) => haystack.includes(word)))
+    && matchesLocation
     && (!filters.category || filters.category === 'all' || product.category === filters.category)
     && (!filters.condition || filters.condition === 'all' || product.condition === filters.condition)
     && (!filters.status || filters.status === 'all' || product.status === filters.status)
