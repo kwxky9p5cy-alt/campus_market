@@ -36,10 +36,11 @@ const researchPrompt = `你是二手商品公开信息核验与参考定价助�
 规则：
 1. 只能依据给定搜索结果，不得使用记忆补充价格、品牌或型号。
 2. 先判断搜索结果是否与图中商品属于同一品牌和同类商品；同名但品类不同、疑似广告、批发价、配件价、定金或明显异常价必须排除。
-3. 区分新品标价和二手价格。只有结果中存在可核验的人民币价格信息时才给出区间；证据不足时价格全部为 null，status 为 insufficient。
-4. suggestedPrice 是结合可见成色后的保守参考值，不得写入用户售价字段。成色证据不足时不要做过度精确调整。
-5. sources 只能使用输入中真实存在的 URL，最多 5 个。summary 和 rationale 必须说明不确定性。
-6. identifiedBrand 只有被图片文字与搜索结果共同支持时才填写；否则留空。`
+3. 中国大陆市场优先。优先使用标记为 mainland 的来源；other 来源只能辅助核验品牌和型号，不能用于人民币参考定价。
+4. 区分新品标价和二手价格。只有中国大陆来源中存在明确以人民币（人民币、RMB、CNY 或“元”）标注、且可核验的完整商品价格时才给出区间。不得把新台币、港币、澳门币、日元或只写“$ / ¥”但币种不明的价格换算或混入人民币区间；证据不足时价格全部为 null，status 为 insufficient。
+5. suggestedPrice 是结合可见成色后的保守参考值，不得写入用户售价字段。成色证据不足时不要做过度精确调整。
+6. sources 只能使用输入中真实存在的 URL，最多 5 个。若给出人民币区间，sources 至少包含一个实际用于定价的 mainland 来源。summary 和 rationale 必须说明价格来源、币种及不确定性。
+7. identifiedBrand 只有被图片文字与搜索结果共同支持时才填写；否则留空。`
 
 const searchSchema = {
   type: 'object',
@@ -171,7 +172,29 @@ interface SearchResult {
   title: string
   url: string
   content: string
+  market: 'mainland' | 'other'
 }
+
+const preferredMainlandDomains = [
+  'goofish.com',
+  'zhuanzhuan.com',
+  'jd.com',
+  'taobao.com',
+  'tmall.com',
+  'suning.com',
+  'smzdm.com',
+  'pconline.com.cn',
+  'zol.com.cn',
+]
+
+const excludedRegionalDomains = [
+  'findprice.com.tw',
+  'feebee.com.tw',
+  'biggo.com.tw',
+  'ruten.com.tw',
+  'price.com.hk',
+  'carousell.com.hk',
+]
 
 function unavailableResearch(query: string, status: 'insufficient' | 'unavailable') {
   return {
@@ -199,19 +222,41 @@ function safeHttpUrl(value: unknown) {
   }
 }
 
+function searchMarket(url: string): 'mainland' | 'other' {
+  try {
+    const host = new URL(url).hostname.toLowerCase().replace(/^www\./, '')
+    if (host.endsWith('.cn') || preferredMainlandDomains.some((domain) => host === domain || host.endsWith(`.${domain}`))) return 'mainland'
+  } catch { /* URL already passed safeHttpUrl; keep a defensive fallback. */ }
+  return 'other'
+}
+
 async function searchWeb(query: string, apiKey: string): Promise<SearchResult[]> {
+  const localizedQuery = `${query} 中国大陆 二手 人民币 元`.slice(0, 240)
   const response = await fetch('https://api.tavily.com/search', {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query, topic: 'general', search_depth: 'advanced', max_results: 6, include_answer: false, include_raw_content: false }),
+    body: JSON.stringify({
+      query: localizedQuery,
+      topic: 'general',
+      search_depth: 'advanced',
+      max_results: 8,
+      country: 'china',
+      language: 'zh-cn',
+      filter_by_language: true,
+      include_domains: preferredMainlandDomains,
+      include_domains_mode: 'prefer',
+      exclude_domains: excludedRegionalDomains,
+      include_answer: false,
+      include_raw_content: false,
+    }),
   })
   if (!response.ok) throw new Error(`Search provider failed: ${response.status}`)
   const payload = await response.json() as { results?: Array<Record<string, unknown>> }
   return (Array.isArray(payload.results) ? payload.results : []).flatMap((item) => {
     const url = safeHttpUrl(item.url)
     if (!url || typeof item.title !== 'string' || typeof item.content !== 'string') return []
-    return [{ title: item.title.slice(0, 160), url, content: item.content.slice(0, 1200) }]
-  }).slice(0, 6)
+    return [{ title: item.title.slice(0, 160), url, content: item.content.slice(0, 1200), market: searchMarket(url) }]
+  }).slice(0, 8)
 }
 
 async function researchProduct(
