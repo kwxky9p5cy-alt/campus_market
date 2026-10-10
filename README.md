@@ -51,7 +51,7 @@ demo1234
 ```bash
 VITE_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 VITE_SUPABASE_ANON_KEY=YOUR_ANON_KEY
-VITE_REQUEST_TIMEOUT_MS=12000
+VITE_REQUEST_TIMEOUT_MS=30000
 ```
 
 `anon` key 可以放在浏览器，但必须保留本项目 RLS。不要将 `service_role` 或 AI Key 加上 `VITE_` 前缀。
@@ -63,7 +63,10 @@ Edge Function 的服务端 secrets：
 ```bash
 supabase secrets set DEEPSEEK_API_KEY=YOUR_SECRET
 supabase secrets set DEEPSEEK_MODEL=deepseek-flash
+supabase secrets set TAVILY_API_KEY=YOUR_SECRET
 ```
+
+`TAVILY_API_KEY` 可选。配置后，自动填写会依据图片生成有区分度的商品查询，检索公开网页，再由模型核对品牌、同类商品和人民币价格。参考价格会与用户填写的售价分开显示，并附来源链接；搜索失败或证据不足不会阻断图片识别，也不会自动填写售价。
 
 ## Supabase 创建与配置
 
@@ -106,7 +109,7 @@ supabase secrets set DEEPSEEK_MODEL=deepseek-flash
 supabase functions deploy ai-assistant
 ```
 
-自动填写会先把浏览器中的商品图压缩到适合视觉识别的大小，再由 Edge Function 发送给 DeepSeek Responses API 的 `deepseek-flash` 视觉模型。模型提取主要商品、可见文字、颜色与外观状态，并以 JSON Schema 返回可编辑草稿。图片不会写入前端环境变量，DeepSeek Key 只保存在 Supabase secrets。
+自动填写会先把浏览器中的商品图压缩到适合视觉识别的大小，再由 Edge Function 发送给 DeepSeek Responses API 的 `deepseek-flash` 视觉模型。模型提取主要商品、可见文字、品牌候选、颜色、材质、区别特征与外观状态，并以 JSON Schema 返回可编辑草稿。配置 Tavily 后，Edge Function 会把模型生成的检索词交给搜索服务，再让模型仅依据返回的公开结果完成品牌核验和参考定价。图片和服务密钥都不会写入前端环境变量。
 
 若函数、模型或 Key 不可用，页面自动使用独立规则解析器：
 

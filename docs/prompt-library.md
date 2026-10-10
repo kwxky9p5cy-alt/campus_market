@@ -17,7 +17,7 @@
 
 事实约束：
 1. 只能输出输入中明确出现、或从图片中可以可靠识别的事实。
-2. 不得猜测购买日期、原价、保修、维修史、缺陷、配件、品牌或型号。
+2. 不得猜测购买日期、原价、保修、维修史、缺陷、配件、品牌或型号；图片中的品牌候选必须附可见证据与置信度。
 3. 无法确定的字段必须为 null、空字符串，或写入 missingFields。
 4. 不得为了让结果完整而制造事实。
 5. 你不执行发布；用户修改并确认后，应用才可以提交。
@@ -36,7 +36,20 @@
     "productObjects": string[],
     "visibleText": string[],
     "colors": string[],
-    "conditionNotes": string[]
+    "materials": string[],
+    "distinguishingFeatures": string[],
+    "brandCandidates": [{ "name": string, "evidence": string, "confidence": "high" | "medium" | "low" }],
+    "conditionNotes": string[],
+    "conditionConfidence": "high" | "medium" | "low" | "none"
+  },
+  "research": {
+    "status": "available" | "insufficient" | "unavailable",
+    "identifiedBrand": string,
+    "identifiedProduct": string,
+    "priceLow": number | null,
+    "priceHigh": number | null,
+    "suggestedPrice": number | null,
+    "sources": [{ "title": string, "url": string }]
   }
 }
 ```
@@ -73,9 +86,13 @@
         "productObjects": { "type": "array", "items": { "type": "string" } },
         "visibleText": { "type": "array", "items": { "type": "string" } },
         "colors": { "type": "array", "items": { "type": "string" } },
-        "conditionNotes": { "type": "array", "items": { "type": "string" } }
+        "materials": { "type": "array", "items": { "type": "string" } },
+        "distinguishingFeatures": { "type": "array", "items": { "type": "string" } },
+        "brandCandidates": { "type": "array" },
+        "conditionNotes": { "type": "array", "items": { "type": "string" } },
+        "conditionConfidence": { "enum": ["high", "medium", "low", "none"] }
       },
-      "required": ["productObjects", "visibleText", "colors", "conditionNotes"],
+      "required": ["productObjects", "visibleText", "colors", "materials", "distinguishingFeatures", "brandCandidates", "conditionNotes", "conditionConfidence"],
       "additionalProperties": false
     }
   },
@@ -101,6 +118,10 @@
 ### A8. 能力边界
 
 AI 不负责上传图片、创建商品、决定商品状态、绕过验证或替用户承诺商品真实情况。默认规则解析器只从文字提取有限字段。
+
+### A9. 联网核验与参考定价
+
+DeepSeek Responses API 不提供内置网页搜索。本项目在服务端可选接入 Tavily：视觉模型先生成检索词，搜索服务返回标题、摘要和 URL，第二次模型调用只依据这些结果核验品牌并估算人民币参考区间。来源不足、商品不匹配或只有异常价格时，价格保持为空。参考价不写入售价字段，也不能代替用户检查商品真伪和实际成交行情。
 
 ## B. 智能检索
 

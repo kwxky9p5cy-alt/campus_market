@@ -16,7 +16,28 @@ const schema = z.object({
     productObjects: z.array(z.string().max(80)).max(8),
     visibleText: z.array(z.string().max(120)).max(12),
     colors: z.array(z.string().max(40)).max(8),
+    materials: z.array(z.string().max(60)).max(8),
+    distinguishingFeatures: z.array(z.string().max(120)).max(8),
+    brandCandidates: z.array(z.object({
+      name: z.string().max(80),
+      evidence: z.string().max(160),
+      confidence: z.enum(['high', 'medium', 'low']),
+    })).max(5),
     conditionNotes: z.array(z.string().max(120)).max(8),
+    conditionConfidence: z.enum(['high', 'medium', 'low', 'none']),
+  }),
+  research: z.object({
+    status: z.enum(['available', 'insufficient', 'unavailable']),
+    query: z.string().max(160),
+    identifiedBrand: z.string().max(80),
+    identifiedProduct: z.string().max(120),
+    confidence: z.enum(['high', 'medium', 'low', 'none']),
+    summary: z.string().max(500),
+    priceLow: z.number().nonnegative().nullable(),
+    priceHigh: z.number().nonnegative().nullable(),
+    suggestedPrice: z.number().nonnegative().nullable(),
+    rationale: z.string().max(500),
+    sources: z.array(z.object({ title: z.string().max(160), url: z.string().url().max(1000) })).max(5),
   }),
 })
 
@@ -78,7 +99,14 @@ export function fallbackAutofill({ rawText }: AutofillInput): AutofillResult {
     location,
     tags: [...new Set(tags)],
     missingFields,
-    imageInsights: { productObjects: [], visibleText: [], colors: [], conditionNotes: [] },
+    imageInsights: {
+      productObjects: [], visibleText: [], colors: [], materials: [], distinguishingFeatures: [],
+      brandCandidates: [], conditionNotes: [], conditionConfidence: 'none',
+    },
+    research: {
+      status: 'unavailable', query: '', identifiedBrand: '', identifiedProduct: '', confidence: 'none',
+      summary: '', priceLow: null, priceHigh: null, suggestedPrice: null, rationale: '', sources: [],
+    },
     source: 'fallback',
   }
 }

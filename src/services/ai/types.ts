@@ -24,7 +24,29 @@ export interface AutofillImageInsights {
   productObjects: string[]
   visibleText: string[]
   colors: string[]
+  materials: string[]
+  distinguishingFeatures: string[]
+  brandCandidates: Array<{
+    name: string
+    evidence: string
+    confidence: 'high' | 'medium' | 'low'
+  }>
   conditionNotes: string[]
+  conditionConfidence: 'high' | 'medium' | 'low' | 'none'
+}
+
+export interface AutofillResearch {
+  status: 'available' | 'insufficient' | 'unavailable'
+  query: string
+  identifiedBrand: string
+  identifiedProduct: string
+  confidence: 'high' | 'medium' | 'low' | 'none'
+  summary: string
+  priceLow: number | null
+  priceHigh: number | null
+  suggestedPrice: number | null
+  rationale: string
+  sources: Array<{ title: string; url: string }>
 }
 
 export interface AutofillResult {
@@ -37,5 +59,6 @@ export interface AutofillResult {
   tags: string[]
   missingFields: string[]
   imageInsights: AutofillImageInsights
+  research: AutofillResearch
   source: 'provider' | 'fallback'
 }

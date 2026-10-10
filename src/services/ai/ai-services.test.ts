@@ -24,7 +24,10 @@ describe('autofill fallback', () => {
     const result = fallbackAutofill({ rawText: '一个闲置物品' })
     expect(result.price).toBeNull()
     expect(result.missingFields).toContain('售价')
-    expect(result.imageInsights).toEqual({ productObjects: [], visibleText: [], colors: [], conditionNotes: [] })
+    expect(result.imageInsights).toEqual({
+      productObjects: [], visibleText: [], colors: [], materials: [], distinguishingFeatures: [],
+      brandCandidates: [], conditionNotes: [], conditionConfidence: 'none',
+    })
   })
 })
 
@@ -43,10 +46,20 @@ describe('autofill provider response', () => {
         productObjects: ['无线键盘'],
         visibleText: ['LOGITECH K380'],
         colors: ['绿色'],
+        materials: ['塑料'],
+        distinguishingFeatures: ['圆形键帽'],
+        brandCandidates: [{ name: '罗技', evidence: '机身文字 LOGITECH', confidence: 'high' }],
         conditionNotes: [],
+        conditionConfidence: 'none',
+      },
+      research: {
+        status: 'available', query: '罗技 K380 二手价格', identifiedBrand: '罗技', identifiedProduct: 'K380 无线键盘',
+        confidence: 'high', summary: '公开结果与图片文字一致。', priceLow: 70, priceHigh: 110, suggestedPrice: 90,
+        rationale: '根据同型号二手商品公开价格，并保留成色差异。', sources: [{ title: '示例来源', url: 'https://example.com/k380' }],
       },
     })
 
     expect(result.location).toBe('')
+    expect(result.research.suggestedPrice).toBe(90)
   })
 })

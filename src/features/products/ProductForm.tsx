@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { ImagePlus, Sparkles, Star, X } from 'lucide-react'
+import { ExternalLink, ImagePlus, Sparkles, Star, X } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -12,7 +12,7 @@ import { autofillProduct } from '@/services/ai/autofill'
 import { prepareAutofillImages } from '@/services/ai/images'
 import { safeErrorMessage } from '@/lib/utils'
 import type { Product, ProductInput } from '@/types/domain'
-import type { AutofillImageInsights } from '@/services/ai/types'
+import type { AutofillImageInsights, AutofillResearch } from '@/services/ai/types'
 
 const optionalMoney = z.preprocess((value) => value == null || value === '' || Number.isNaN(value) ? null : Number(value), z.number().nonnegative().max(1_000_000).nullable())
 const schema = z.object({
@@ -34,6 +34,7 @@ export function ProductForm({ product, onSubmit }: { product?: Product; onSubmit
   const [aiLoading, setAiLoading] = useState(false)
   const [aiMissing, setAiMissing] = useState<string[]>([])
   const [aiInsights, setAiInsights] = useState<AutofillImageInsights | null>(null)
+  const [aiResearch, setAiResearch] = useState<AutofillResearch | null>(null)
   const [newImages, setNewImages] = useState<NewImage[]>([])
   const [keepImageIds, setKeepImageIds] = useState(product?.images.map((item) => item.id) ?? [])
   const [imageError, setImageError] = useState('')
@@ -78,6 +79,7 @@ export function ProductForm({ product, onSubmit }: { product?: Product; onSubmit
       if (result.location) setValue('location', result.location, { shouldValidate: true })
       setAiMissing(result.missingFields)
       setAiInsights(result.imageInsights)
+      setAiResearch(result.research)
       if (result.source === 'fallback') {
         toast({ title: totalImages ? '图片识别暂时不可用' : '已使用本地规则填写', description: totalImages ? '当前只能从你输入的文字提取信息，请稍后再试图片识别。' : 'AI 服务暂不可用，请检查自动填写结果。', tone: 'info' })
       } else {
@@ -124,10 +126,35 @@ export function ProductForm({ product, onSubmit }: { product?: Product; onSubmit
       <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
         <section className="surface rounded-lg p-4" aria-labelledby="ai-fill-title">
           <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-primary" /><h2 id="ai-fill-title" className="text-sm font-semibold">辅助填写</h2></div>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">上传图片后可识别商品、文字、颜色和可见外观；补充价格与面交地点会更完整。系统不会替你发布。</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">上传图片后可识别商品、文字、品牌线索、材质与可见成色，并尝试检索公开信息作为定价参考。系统不会替你发布。</p>
           <Textarea className="mt-3 min-h-32" value={rawText} onChange={(event) => setRawText(event.target.value)} placeholder="可选：K380，用了一年，功能正常，100 元左右，宿舍楼下可面交" aria-label="原始商品描述" />
           <Button type="button" className="mt-3 w-full" variant="secondary" loading={aiLoading} onClick={() => void runAutofill()}>自动填写</Button>
-          {aiInsights && Object.values(aiInsights).some((items) => items.length) ? <div className="mt-3 space-y-1.5 border-t border-border pt-3 text-xs leading-5"><p className="font-medium">图片识别结果</p>{aiInsights.productObjects.length ? <p className="break-words text-muted-foreground">商品：{aiInsights.productObjects.join('、')}</p> : null}{aiInsights.visibleText.length ? <p className="break-words text-muted-foreground">文字：{aiInsights.visibleText.join('、')}</p> : null}{aiInsights.colors.length ? <p className="break-words text-muted-foreground">颜色：{aiInsights.colors.join('、')}</p> : null}{aiInsights.conditionNotes.length ? <p className="break-words text-muted-foreground">外观：{aiInsights.conditionNotes.join('、')}</p> : null}</div> : null}
+          {aiInsights && (aiInsights.productObjects.length || aiInsights.visibleText.length || aiInsights.colors.length || aiInsights.materials.length || aiInsights.distinguishingFeatures.length || aiInsights.brandCandidates.length || aiInsights.conditionNotes.length) ? (
+            <div className="mt-3 space-y-1.5 border-t border-border pt-3 text-xs leading-5">
+              <p className="font-medium">图片识别结果</p>
+              {aiInsights.productObjects.length ? <p className="break-words text-muted-foreground">商品：{aiInsights.productObjects.join('、')}</p> : null}
+              {aiInsights.brandCandidates.length ? <div className="text-muted-foreground"><span>品牌线索：</span><div className="mt-1 flex flex-wrap gap-1.5">{aiInsights.brandCandidates.map((brand) => <Badge key={`${brand.name}-${brand.evidence}`} title={brand.evidence}>{brand.name} · {brand.confidence === 'high' ? '较确定' : brand.confidence === 'medium' ? '待核对' : '低置信'}</Badge>)}</div></div> : null}
+              {aiInsights.visibleText.length ? <p className="break-words text-muted-foreground">文字：{aiInsights.visibleText.join('、')}</p> : null}
+              {aiInsights.colors.length ? <p className="break-words text-muted-foreground">颜色：{aiInsights.colors.join('、')}</p> : null}
+              {aiInsights.materials.length ? <p className="break-words text-muted-foreground">材质：{aiInsights.materials.join('、')}</p> : null}
+              {aiInsights.distinguishingFeatures.length ? <p className="break-words text-muted-foreground">特征：{aiInsights.distinguishingFeatures.join('、')}</p> : null}
+              {aiInsights.conditionNotes.length ? <p className="break-words text-muted-foreground">外观：{aiInsights.conditionNotes.join('、')}（判断把握：{aiInsights.conditionConfidence === 'high' ? '高' : aiInsights.conditionConfidence === 'medium' ? '中' : aiInsights.conditionConfidence === 'low' ? '低' : '不足'}）</p> : null}
+            </div>
+          ) : null}
+          {aiResearch?.query ? (
+            <div className="mt-3 border-t border-border pt-3 text-xs leading-5">
+              <div className="flex items-center justify-between gap-3"><p className="font-medium">联网参考</p>{aiResearch.status === 'available' ? <Badge>仅供参考</Badge> : null}</div>
+              {aiResearch.status === 'available' ? (
+                <div className="mt-1.5 space-y-1.5 text-muted-foreground">
+                  {aiResearch.identifiedBrand || aiResearch.identifiedProduct ? <p className="break-words">识别：{[aiResearch.identifiedBrand, aiResearch.identifiedProduct].filter(Boolean).join(' · ')}（{aiResearch.confidence === 'high' ? '较确定' : aiResearch.confidence === 'medium' ? '待核对' : '低置信'}）</p> : null}
+                  {aiResearch.summary ? <p className="break-words">{aiResearch.summary}</p> : null}
+                  {aiResearch.priceLow != null && aiResearch.priceHigh != null ? <p className="text-foreground">公开价格范围：¥{aiResearch.priceLow}–¥{aiResearch.priceHigh}{aiResearch.suggestedPrice != null ? `；结合可见成色可参考 ¥${aiResearch.suggestedPrice}` : ''}</p> : null}
+                  {aiResearch.rationale ? <p className="break-words">{aiResearch.rationale}</p> : null}
+                  {aiResearch.sources.length ? <div className="flex flex-wrap gap-x-3 gap-y-1">{aiResearch.sources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noreferrer" className="focus-ring inline-flex max-w-full items-center gap-1 rounded text-foreground underline decoration-border underline-offset-4 hover:decoration-foreground"><span className="truncate">{source.title}</span><ExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" /></a>)}</div> : null}
+                </div>
+              ) : <p className="mt-1.5 text-muted-foreground">{aiResearch.status === 'insufficient' ? '已尝试检索，但没有找到足够可靠的同类商品与价格信息。' : '联网参考暂时不可用，图片识别结果仍可正常使用。'}</p>}
+            </div>
+          ) : null}
           {aiMissing.length ? <div className="mt-3"><p className="text-xs text-muted-foreground">仍需补充</p><div className="mt-2 flex flex-wrap gap-1.5">{aiMissing.map((item) => <Badge key={item}>{item}</Badge>)}</div></div> : null}
         </section>
         <div className="surface rounded-lg p-4"><p className="text-sm font-medium">发布前确认</p><ul className="mt-2 space-y-1.5 text-xs leading-5 text-muted-foreground"><li>· 图片与描述属于同一件商品</li><li>· 已如实说明影响使用的问题</li><li>· 面交时当面核对商品状态</li></ul><Button type="submit" className="mt-4 w-full" size="lg" loading={isSubmitting}>{product ? '保存修改' : '确认发布'}</Button></div>
