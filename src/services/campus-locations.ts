@@ -32,7 +32,7 @@ export function formatCampusLocation(value: string) {
 }
 
 function compact(value: string) {
-  return value.toLowerCase().replace(/[\s　]/g, '')
+  return value.toLowerCase().replace(/[\s\u3000]/g, '')
 }
 
 const aliasesByLength = CAMPUS_LOCATIONS.flatMap((location) =>
