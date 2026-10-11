@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { supabase } from '@/lib/supabase'
+import { scanProhibitedText } from '@/services/ai/moderation'
 import type { ProductCategory, ProductCondition } from '@/types/domain'
 import type { AutofillInput, AutofillResult } from '@/services/ai/types'
 
@@ -38,6 +39,13 @@ const schema = z.object({
     suggestedPrice: z.number().nonnegative().nullable(),
     rationale: z.string().max(500),
     sources: z.array(z.object({ title: z.string().max(160), url: z.string().url().max(1000) })).max(5),
+  }),
+  moderation: z.object({
+    status: z.enum(['allowed', 'blocked', 'review']),
+    category: z.enum(['none', 'firearms_explosives', 'drugs_controlled_substances', 'controlled_weapons', 'hazardous_materials', 'protected_wildlife', 'stolen_smuggled_property', 'classified_military_police']),
+    reason: z.string().max(240),
+    evidence: z.array(z.string().max(120)).max(6),
+    confidence: z.enum(['high', 'medium', 'low']),
   }),
 })
 
@@ -107,6 +115,7 @@ export function fallbackAutofill({ rawText }: AutofillInput): AutofillResult {
       status: 'unavailable', query: '', identifiedBrand: '', identifiedProduct: '', confidence: 'none',
       summary: '', priceLow: null, priceHigh: null, suggestedPrice: null, rationale: '', sources: [],
     },
+    moderation: scanProhibitedText(text),
     source: 'fallback',
   }
 }
@@ -115,7 +124,10 @@ export async function autofillProduct(input: AutofillInput): Promise<AutofillRes
   if (supabase) {
     try {
       const { data, error } = await supabase.functions.invoke('ai-assistant', { body: { task: 'autofill', input } })
-      if (!error) return { ...parseAutofillResponse(data), source: 'provider' }
+      if (!error) {
+        const parsed = parseAutofillResponse(data)
+        return { ...parsed, moderation: { ...parsed.moderation, source: 'provider' }, source: 'provider' }
+      }
     } catch { /* Keep the editable rule-based form available. */ }
   }
   return fallbackAutofill(input)

@@ -50,6 +50,13 @@
     "priceHigh": number | null,
     "suggestedPrice": number | null,
     "sources": [{ "title": string, "url": string }]
+  },
+  "moderation": {
+    "status": "allowed" | "blocked" | "review",
+    "category": string,
+    "reason": string,
+    "evidence": string[],
+    "confidence": "high" | "medium" | "low"
   }
 }
 ```
@@ -70,7 +77,7 @@
 ```json
 {
   "type": "object",
-  "required": ["title", "category", "price", "condition", "description", "location", "tags", "missingFields", "imageInsights"],
+  "required": ["title", "category", "price", "condition", "description", "location", "tags", "missingFields", "imageInsights", "moderation"],
   "properties": {
     "title": { "type": "string", "maxLength": 80 },
     "category": { "enum": ["digital", "books", "life", "sports", "other", null] },
@@ -93,6 +100,18 @@
         "conditionConfidence": { "enum": ["high", "medium", "low", "none"] }
       },
       "required": ["productObjects", "visibleText", "colors", "materials", "distinguishingFeatures", "brandCandidates", "conditionNotes", "conditionConfidence"],
+      "additionalProperties": false
+    },
+    "moderation": {
+      "type": "object",
+      "required": ["status", "category", "reason", "evidence", "confidence"],
+      "properties": {
+        "status": { "enum": ["allowed", "blocked", "review"] },
+        "category": { "type": "string" },
+        "reason": { "type": "string" },
+        "evidence": { "type": "array", "items": { "type": "string" } },
+        "confidence": { "enum": ["high", "medium", "low"] }
+      },
       "additionalProperties": false
     }
   },
@@ -122,6 +141,12 @@ AI 不负责上传图片、创建商品、决定商品状态、绕过验证或�
 ### A9. 联网核验与参考定价
 
 DeepSeek Responses API 不提供内置网页搜索。本项目在服务端可选接入 Tavily：视觉模型先生成检索词，搜索服务返回标题、摘要和 URL，第二次模型调用只依据这些结果核验品牌并估算人民币参考区间。来源不足、商品不匹配或只有异常价格时，价格保持为空。参考价不写入售价字段，也不能代替用户检查商品真伪和实际成交行情。
+
+### A10. 一类高危违禁品检查
+
+最终提交前会单独调用安全审核任务，同时检查商品标题、描述、补充文字、商品本体和图片文字。规则覆盖枪支弹药与爆炸物、毒品与受管制药品、管制器具、危险化学品、保护野生动植物及其制品、赃物与走私货、涉密资料及军警专用标识装备。
+
+审核结果只能是 `allowed`、`blocked` 或 `review`。明确命中时直接阻止发布；图片或文字存在较强风险线索但无法确认时同样暂停发布；无风险证据才允许继续。普通未改装菜刀、美工刀、酒精棉片、普通服饰和影视周边不能仅凭名称判为违禁品。安全服务不可用时失败关闭，避免绕过图片审核。
 
 ## B. 智能检索
 

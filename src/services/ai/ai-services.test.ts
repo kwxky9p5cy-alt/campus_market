@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { fallbackParseSearch } from '@/services/ai/searchParser'
 import { fallbackAutofill, parseAutofillResponse } from '@/services/ai/autofill'
+import { scanProhibitedText } from '@/services/ai/moderation'
 
 describe('search parser fallback', () => {
   it('parses keyboard, max price and condition', () => {
@@ -28,6 +29,20 @@ describe('autofill fallback', () => {
       productObjects: [], visibleText: [], colors: [], materials: [], distinguishingFeatures: [],
       brandCandidates: [], conditionNotes: [], conditionConfidence: 'none',
     })
+  })
+  it('blocks explicit class-one prohibited goods in local fallback', () => {
+    expect(fallbackAutofill({ rawText: '出售一把仿真枪和弹匣' }).moderation).toMatchObject({ status: 'blocked', category: 'firearms_explosives' })
+  })
+})
+
+describe('listing moderation fallback', () => {
+  it('blocks high-confidence prohibited descriptions', () => {
+    expect(scanProhibitedText('闲置象牙摆件')).toMatchObject({ status: 'blocked', category: 'protected_wildlife' })
+    expect(scanProhibitedText('出售警徽和警号')).toMatchObject({ status: 'blocked', category: 'classified_military_police' })
+  })
+
+  it('does not block ordinary kitchen and utility knives', () => {
+    expect(scanProhibitedText('宿舍搬家，转让普通菜刀和美工刀')).toMatchObject({ status: 'allowed', category: 'none' })
   })
 })
 
@@ -57,6 +72,7 @@ describe('autofill provider response', () => {
         confidence: 'high', summary: '公开结果与图片文字一致。', priceLow: 70, priceHigh: 110, suggestedPrice: 90,
         rationale: '根据同型号二手商品公开价格，并保留成色差异。', sources: [{ title: '示例来源', url: 'https://example.com/k380' }],
       },
+      moderation: { status: 'allowed', category: 'none', reason: '', evidence: [], confidence: 'high' },
     })
 
     expect(result.location).toBe('')

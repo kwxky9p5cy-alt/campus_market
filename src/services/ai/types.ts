@@ -20,6 +20,25 @@ export interface AutofillInput {
   images?: AutofillImage[]
 }
 
+export type ModerationCategory =
+  | 'none'
+  | 'firearms_explosives'
+  | 'drugs_controlled_substances'
+  | 'controlled_weapons'
+  | 'hazardous_materials'
+  | 'protected_wildlife'
+  | 'stolen_smuggled_property'
+  | 'classified_military_police'
+
+export interface ModerationResult {
+  status: 'allowed' | 'blocked' | 'review'
+  category: ModerationCategory
+  reason: string
+  evidence: string[]
+  confidence: 'high' | 'medium' | 'low'
+  source: 'provider' | 'local'
+}
+
 export interface AutofillImageInsights {
   productObjects: string[]
   visibleText: string[]
@@ -60,5 +79,6 @@ export interface AutofillResult {
   missingFields: string[]
   imageInsights: AutofillImageInsights
   research: AutofillResearch
+  moderation: ModerationResult
   source: 'provider' | 'fallback'
 }
