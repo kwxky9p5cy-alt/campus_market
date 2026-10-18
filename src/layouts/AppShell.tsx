@@ -1,5 +1,5 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import { Heart, Home, LogOut, Menu, MessageCircle, Plus, Search, ShoppingBag, UserRound } from 'lucide-react'
+import { Heart, Home, LogOut, Menu, MessageCircle, Plus, Search, ShoppingBag, Sparkles, UserRound } from 'lucide-react'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { Avatar } from '@/components/ui/avatar'
@@ -14,6 +14,7 @@ const desktopLinks = [
   { to: '/search', label: '分类' },
   { to: '/favorites', label: '收藏' },
   { to: '/messages', label: '消息' },
+  { to: '/assistant', label: '闲置助手' },
 ]
 
 const mobileLinks = [
@@ -30,6 +31,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const location = useLocation()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const isConversation = /^\/messages\/[^/]+$/.test(location.pathname)
+  const isFocusedPage = isConversation || location.pathname === '/assistant'
 
   function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -68,13 +70,14 @@ export function AppShell({ children }: { children: ReactNode }) {
               </DropdownMenu.Root>
             ) : <Button className="ml-1" size="sm" variant="ghost" onClick={() => openAuth('login')}>登录</Button>}
           </nav>
+          <Link to="/assistant" className="focus-ring rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground md:hidden" aria-label="打开闲置助手"><Sparkles className="h-5 w-5" /></Link>
           <button type="button" className="focus-ring rounded-md p-2 md:hidden" onClick={() => setMobileMenuOpen((open) => !open)} aria-label="打开菜单" aria-expanded={mobileMenuOpen}><Menu className="h-5 w-5" /></button>
         </div>
         {mobileMenuOpen ? <div className="border-t border-border px-4 py-3 md:hidden"><div className="flex items-center justify-between text-sm"><span>{session ? `你好，${session.profile.username}` : '登录后可发布与交易'}</span>{session ? <button className="focus-ring rounded px-2 py-1 text-muted-foreground" onClick={() => void signOut()}>退出</button> : <Button size="sm" onClick={() => { openAuth('login'); setMobileMenuOpen(false) }}>登录</Button>}</div></div> : null}
       </header>
       <main>{children}</main>
-      {!isConversation ? <footer className="mt-16 hidden border-t border-border py-8 md:block"><div className="page-container flex items-center justify-between text-xs text-muted-foreground"><span>Campus Market · 校园集市</span><span>线下面交，请当面核对商品状态</span></div></footer> : null}
-      {!isConversation ? <nav className="fixed inset-x-0 bottom-0 z-40 grid h-16 grid-cols-5 border-t border-border bg-background/98 pb-[env(safe-area-inset-bottom)] md:hidden" aria-label="移动端主导航">
+      {!isFocusedPage ? <footer className="mt-16 hidden border-t border-border py-8 md:block"><div className="page-container flex items-center justify-between text-xs text-muted-foreground"><span>Campus Market · 校园集市</span><span>线下面交，请当面核对商品状态</span></div></footer> : null}
+      {!isFocusedPage ? <nav className="fixed inset-x-0 bottom-0 z-40 grid h-16 grid-cols-5 border-t border-border bg-background/98 pb-[env(safe-area-inset-bottom)] md:hidden" aria-label="移动端主导航">
         {mobileLinks.map(({ to, label, icon: Icon }) => <NavLink key={to} to={to} onClick={(event) => { if (to !== '/' && !session) { event.preventDefault(); requireAuth(() => navigate(to)) } }} className={({ isActive }) => cn('focus-ring flex flex-col items-center justify-center gap-1 text-[10px] text-muted-foreground', isActive && 'font-medium text-primary', to === '/sell' && 'text-primary')}><Icon className={cn('h-5 w-5', to === '/sell' && 'rounded-md bg-primary p-1 text-primary-foreground')} />{label}</NavLink>)}
       </nav> : null}
     </div>

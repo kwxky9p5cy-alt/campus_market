@@ -12,6 +12,7 @@ import { MessagesPage } from '@/pages/MessagesPage'
 import { ConversationPage } from '@/pages/ConversationPage'
 import { ProfilePage } from '@/pages/ProfilePage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
+import { AssistantPage } from '@/pages/AssistantPage'
 
 const protectedPage = (node: React.ReactNode) => <ProtectedRoute>{node}</ProtectedRoute>
 
@@ -29,6 +30,7 @@ export function App() {
           <Route path="/trades" element={protectedPage(<TradesPage />)} />
           <Route path="/messages" element={protectedPage(<MessagesPage />)} />
           <Route path="/messages/:id" element={protectedPage(<ConversationPage />)} />
+          <Route path="/assistant" element={protectedPage(<AssistantPage />)} />
           <Route path="/profile" element={protectedPage(<ProfilePage />)} />
           <Route path="/me" element={<Navigate to="/profile" replace />} />
           <Route path="*" element={<NotFoundPage />} />
