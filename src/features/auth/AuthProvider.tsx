@@ -9,7 +9,7 @@ import { marketplace } from '@/services/marketplace'
 import { safeErrorMessage } from '@/lib/utils'
 import type { UserSession } from '@/types/domain'
 
-type AuthMode = 'login' | 'signup'
+type AuthMode = 'login' | 'signup' | 'forgot'
 interface AuthContextValue {
   session: UserSession | null
   loading: boolean
@@ -23,6 +23,13 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null)
 const loginSchema = z.object({ email: z.string().email('请输入有效邮箱'), password: z.string().min(8, '密码至少需要 8 位') })
 const signupSchema = loginSchema.extend({ username: z.string().trim().min(2, '昵称至少 2 个字').max(24, '昵称最多 24 个字') })
+const forgotSchema = z.object({ email: z.string().email('请输入有效邮箱') })
+
+const authCopy: Record<AuthMode, { title: string; description: string; submit: string }> = {
+  login: { title: '登录校园集市', description: '登录后可收藏、发布和联系卖家。', submit: '登录' },
+  signup: { title: '创建账号', description: '使用常用邮箱注册，每个邮箱只能创建一个账号。', submit: '注册' },
+  forgot: { title: '找回密码', description: '输入注册邮箱，我们会发送安全的密码重置链接。', submit: '发送重置邮件' },
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<UserSession | null>(null)
@@ -85,13 +92,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setFieldErrors({})
     const form = new FormData(event.currentTarget)
     const values = { email: String(form.get('email') ?? ''), password: String(form.get('password') ?? ''), username: String(form.get('username') ?? '') }
-    const parsed = mode === 'login' ? loginSchema.safeParse(values) : signupSchema.safeParse(values)
+    const parsed = mode === 'login' ? loginSchema.safeParse(values) : mode === 'signup' ? signupSchema.safeParse(values) : forgotSchema.safeParse(values)
     if (!parsed.success) {
       setFieldErrors(Object.fromEntries(parsed.error.issues.map((issue) => [String(issue.path[0]), issue.message])))
       setSubmitting(false)
       return
     }
     try {
+      if (mode === 'forgot') {
+        await marketplace.requestPasswordReset(values.email, `${window.location.origin}/reset-password`)
+        setDialogOpen(false)
+        toast({ title: '请查看邮箱', description: '如果该邮箱已注册，你会收到密码重置邮件。请点击邮件中的链接继续。', tone: 'success' })
+        return
+      }
       const next = mode === 'login'
         ? await marketplace.signIn(values.email, values.password)
         : await marketplace.signUp(values.email, values.password, values.username)
@@ -106,7 +119,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         window.setTimeout(() => { afterAuth?.(); setAfterAuth(null) }, 0)
       }
     } catch (error) {
-      setFormError(safeErrorMessage(error, '登录失败，请重试。'))
+      setFormError(safeErrorMessage(error, mode === 'forgot' ? '重置邮件发送失败，请稍后重试。' : '登录失败，请重试。'))
     } finally {
       setSubmitting(false)
     }
@@ -117,7 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider value={value}>
       {children}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen} title={mode === 'login' ? '登录校园集市' : '创建账号'} description={mode === 'login' ? '登录后可收藏、发布和联系卖家。' : '无需学校认证，使用常用邮箱即可。'}>
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen} title={authCopy[mode].title} description={authCopy[mode].description}>
         <form className="grid gap-4" onSubmit={handleSubmit} noValidate>
           {authError && !formError ? (
             <div className="rounded-md border border-destructive/25 bg-destructive/5 px-3 py-2 text-sm" role="status">
@@ -133,13 +146,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           <FormField label="邮箱" htmlFor="auth-email" required error={fieldErrors.email}>
             <Input id="auth-email" name="email" type="email" autoComplete="email" defaultValue={marketplace.mode === 'demo' ? 'demo@campus.market' : ''} aria-invalid={Boolean(fieldErrors.email)} />
           </FormField>
-          <FormField label="密码" htmlFor="auth-password" required error={fieldErrors.password} hint={marketplace.mode === 'demo' ? '演示账号密码：demo1234' : '至少 8 位'}>
-            <Input id="auth-password" name="password" type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} defaultValue={marketplace.mode === 'demo' ? 'demo1234' : ''} aria-invalid={Boolean(fieldErrors.password)} />
-          </FormField>
+          {mode !== 'forgot' ? (
+            <FormField label="密码" htmlFor="auth-password" required error={fieldErrors.password} hint={marketplace.mode === 'demo' ? '演示账号密码：demo1234' : '至少 8 位'}>
+              <Input id="auth-password" name="password" type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} defaultValue={marketplace.mode === 'demo' ? 'demo1234' : ''} aria-invalid={Boolean(fieldErrors.password)} />
+            </FormField>
+          ) : null}
+          {mode === 'login' ? (
+            <button type="button" className="focus-ring -mt-2 justify-self-end rounded text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline" onClick={() => openAuth('forgot')}>
+              忘记密码？
+            </button>
+          ) : null}
           {formError ? <div className="rounded-md border border-destructive/25 bg-destructive/5 px-3 py-2 text-sm text-destructive" role="alert">{formError}</div> : null}
-          <Button type="submit" loading={submitting}>{mode === 'login' ? '登录' : '注册'}</Button>
+          <Button type="submit" loading={submitting}>{authCopy[mode].submit}</Button>
           <button type="button" className="focus-ring rounded text-sm text-muted-foreground hover:text-foreground" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setFormError(''); setFieldErrors({}) }}>
-            {mode === 'login' ? '还没有账号？立即注册' : '已有账号？返回登录'}
+            {mode === 'login' ? '还没有账号？立即注册' : '返回登录'}
           </button>
         </form>
       </Dialog>

@@ -48,7 +48,7 @@ export function isConnectivityFailure(error: unknown) {
     || /failed to fetch|fetch failed|network(?: request)? failed|load failed|networkerror|connection (?:reset|refused)|ssl|tls/i.test(message)
 }
 
-export type AuthOperation = 'session' | 'sign-in' | 'sign-up' | 'profile'
+export type AuthOperation = 'session' | 'sign-in' | 'sign-up' | 'password-reset' | 'password-update' | 'profile'
 
 export function toAuthServiceError(error: unknown, operation: AuthOperation) {
   if (error instanceof ServiceError) return error
@@ -75,9 +75,13 @@ export function toAuthServiceError(error: unknown, operation: AuthOperation) {
 
   const fallback = operation === 'sign-up'
     ? '注册失败，请检查信息后重试。'
-    : operation === 'session'
-      ? '暂时无法确认登录状态，请重试。'
-      : '登录失败，请稍后重试。'
+    : operation === 'password-reset'
+      ? '暂时无法发送重置邮件，请稍后重试。'
+      : operation === 'password-update'
+        ? '密码更新失败，请重新打开邮件中的链接后再试。'
+        : operation === 'session'
+          ? '暂时无法确认登录状态，请重试。'
+          : '登录失败，请稍后重试。'
   return new ServiceError('unknown', fallback, true)
 }
 

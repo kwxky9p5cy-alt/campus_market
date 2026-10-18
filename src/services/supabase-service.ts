@@ -69,6 +69,10 @@ async function profileForSession(session: Session): Promise<UserSession> {
   return { id: session.user.id, email: session.user.email ?? '', profile: mapProfile(data as RawProfile) }
 }
 
+export function isExistingEmailSignup(user: { identities?: unknown[] | null } | null) {
+  return Boolean(user && Array.isArray(user.identities) && user.identities.length === 0)
+}
+
 const productSelect = '*, seller:profiles!products_seller_id_fkey(*), product_images(*)'
 const tradeSelect = `*, product:products!trade_requests_product_id_fkey(${productSelect}), buyer:profiles!trade_requests_buyer_id_fkey(*), seller:profiles!trade_requests_seller_id_fkey(*)`
 const conversationSelect = `*, product:products!conversations_product_id_fkey(${productSelect}), buyer:profiles!conversations_buyer_id_fkey(*), seller:profiles!conversations_seller_id_fkey(*), messages(*)`
@@ -117,7 +121,18 @@ export const supabaseService: MarketplaceService = {
       if (/already|registered/i.test(error.message)) throw new Error('这个邮箱已经注册。')
       throw toAuthServiceError(error, 'sign-up')
     }
+    // With email confirmation enabled, Supabase can return an obfuscated user
+    // with no identities for an existing address instead of an explicit error.
+    if (isExistingEmailSignup(data.user)) throw new Error('这个邮箱已经注册，请直接登录或找回密码。')
     return data.session ? profileForSession(data.session) : null
+  },
+  async requestPasswordReset(email, redirectTo) {
+    const { error } = await client().auth.resetPasswordForEmail(email.trim(), { redirectTo })
+    if (error) throw toAuthServiceError(error, 'password-reset')
+  },
+  async updatePassword(password) {
+    const { error } = await client().auth.updateUser({ password })
+    if (error) throw toAuthServiceError(error, 'password-update')
   },
   async signOut() {
     const { error } = await client().auth.signOut()

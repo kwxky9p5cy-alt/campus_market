@@ -6,6 +6,8 @@ export interface MarketplaceService {
   getSession: () => Promise<UserSession | null>
   signIn: (email: string, password: string) => Promise<UserSession>
   signUp: (email: string, password: string, username: string) => Promise<UserSession | null>
+  requestPasswordReset: (email: string, redirectTo: string) => Promise<void>
+  updatePassword: (password: string) => Promise<void>
   signOut: () => Promise<void>
   updateProfile: (input: Pick<Profile, 'username' | 'bio'>) => Promise<Profile>
   listProducts: (filters?: ProductFilters) => Promise<Product[]>

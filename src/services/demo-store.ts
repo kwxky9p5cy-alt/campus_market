@@ -120,6 +120,15 @@ export const demoService = {
     localStorage.setItem(SESSION_KEY, id)
     return { id, email: user.email, profile }
   },
+  async requestPasswordReset() {
+    throw new Error('演示模式不会发送邮件，请使用演示账号登录。')
+  },
+  async updatePassword(password: string) {
+    if (password.length < 8) throw new Error('密码至少需要 8 位。')
+    const user = requireUser()
+    const state = readState()
+    writeState({ ...state, users: state.users.map((item) => item.id === user.id ? { ...item, password } : item) })
+  },
   async signOut() {
     localStorage.removeItem(SESSION_KEY)
     window.dispatchEvent(new Event(CHANGE_EVENT))
