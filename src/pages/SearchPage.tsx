@@ -1,4 +1,4 @@
-import { SlidersHorizontal, Sparkles, X } from 'lucide-react'
+import { RotateCcw, SlidersHorizontal, Sparkles, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { FormField, Input, Select } from '@/components/ui/form-controls'
 import { ProductGrid } from '@/components/product/product-grid'
 import { CAMPUS_OPTIONS, splitCampusAddress, type CampusName, resolveCampusLocation, removeCampusLocationTerms } from '@/services/campus-locations'
-import { formatDistance, geocodeCampusLocation, walkingDistanceMeters } from '@/services/amap-distance'
+import { formatDistance, geocodeCampusLocation, resetAMapLoader, walkingDistanceMeters } from '@/services/amap-distance'
 import { CATEGORY_LABELS, CATEGORY_OPTIONS, CONDITION_LABELS, CONDITION_OPTIONS, PRODUCT_STATUS_LABELS } from '@/lib/constants'
 import { marketplace } from '@/services/marketplace'
 import { parseSearch } from '@/services/ai/searchParser'
@@ -23,6 +23,7 @@ export function SearchPage() {
   const [distanceLoading, setDistanceLoading] = useState(false)
   const [distanceError, setDistanceError] = useState('')
   const [distances, setDistances] = useState<Record<string, { meters?: number; differentCampus?: boolean; unavailable?: boolean }>>({})
+  const [distanceAttempt, setDistanceAttempt] = useState(0)
   const [filterOpen, setFilterOpen] = useState(false)
   const smartParam = searchParams.get('smart')
   const origin = searchParams.get('origin') ?? ''
@@ -59,6 +60,16 @@ export function SearchPage() {
       setDistanceLoading(false)
       return
     }
+    if (loading) {
+      setDistanceLoading(false)
+      setDistances({})
+      return
+    }
+    if (!products.length) {
+      setDistanceLoading(false)
+      setDistances({})
+      return
+    }
     let active = true
     setDistanceLoading(true)
     setDistanceError('')
@@ -86,12 +97,26 @@ export function SearchPage() {
         }
       }
       await Promise.all(Array.from({ length: Math.min(3, products.length) }, () => worker()))
-      if (active) setDistances(next)
+      if (active) {
+        setDistances(next)
+        const comparable = Object.values(next).filter((distance) => !distance.differentCampus)
+        if (comparable.length && comparable.every((distance) => distance.unavailable)) {
+          setDistanceError('暂时无法取得步行路线，距离范围尚未应用。当前显示其他条件的搜索结果。')
+        }
+      }
     })().catch((distanceFailure: unknown) => {
-      if (active) setDistanceError(safeErrorMessage(distanceFailure, '起点识别失败，请检查输入的地点。'))
+      if (active) {
+        setDistances({})
+        setDistanceError(safeErrorMessage(distanceFailure, '距离计算暂时不可用，当前显示其他条件的搜索结果。'))
+      }
     }).finally(() => { if (active) setDistanceLoading(false) })
     return () => { active = false }
-  }, [origin, originCampus, products])
+  }, [distanceAttempt, loading, origin, originCampus, products])
+
+  function retryDistance() {
+    resetAMapLoader()
+    setDistanceAttempt((attempt) => attempt + 1)
+  }
 
   const visibleProducts = useMemo(() => products.flatMap((product) => {
     const distance = distances[product.id]
@@ -193,9 +218,14 @@ export function SearchPage() {
           </form>
         </aside>
         <section aria-live="polite">
-          {distanceError ? <p className="mb-3 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{distanceError}</p> : null}
-          {origin && !distanceError ? <p className="mb-3 text-xs text-muted-foreground">距离采用高德步行路线；跨校区商品会标注校区，不计算两校区间距离。{distanceLoading ? '正在识别地点并规划路线…' : ''}</p> : null}
-          <ProductGrid products={visibleProducts} loading={loading || aiLoading || distanceLoading} error={error} onRetry={load} emptyTitle="没有找到匹配商品" emptyDescription="试试减少条件、提高预算，或换一个关键词。" />
+          {distanceError ? (
+            <div className="mb-4 flex flex-col gap-3 rounded-md border border-border bg-muted/45 p-3 text-sm sm:flex-row sm:items-center sm:justify-between" role="status">
+              <div><p className="font-medium">距离筛选暂不可用</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{distanceError}</p></div>
+              <Button type="button" size="sm" variant="outline" className="self-start sm:self-auto" onClick={retryDistance}><RotateCcw className="h-3.5 w-3.5" />重试距离计算</Button>
+            </div>
+          ) : null}
+          {origin && !distanceError ? <p className="mb-3 text-xs text-muted-foreground">距离采用高德步行路线；跨校区商品会标注校区，不计算两校区间距离。{distanceLoading ? '正在计算，商品已先为你显示，距离范围将在完成后生效。' : ''}</p> : null}
+          <ProductGrid products={visibleProducts} loading={loading || aiLoading} error={error} onRetry={load} emptyTitle="没有找到匹配商品" emptyDescription="试试减少条件、提高预算，或换一个关键词。" />
         </section>
       </div>
     </div>
